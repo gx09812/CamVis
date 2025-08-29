@@ -1,17 +1,24 @@
 from ultralytics import YOLO
 import cv2
+import matplotlib.pyplot as plt
 
+
+
+# Load YOLO model (Nano version for speed)
 model = YOLO("yolov8n.pt")  
 video = cv2.VideoCapture(0)
 
+# Optional: Set resolution for faster processing
+video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
 def process_frame(frame):
-    results = model(frame)
+    results = model(frame, stream=True)  # stream=True = better for realtime
     for result in results:
-        boxes = result.boxes
-        for box in boxes:
-            x1, y1, x2, y2 = box.xyxy[0]
-            conf = box.conf[0]
-            cls = box.cls[0]
+        for box in result.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            conf = box.conf[0].item()
+            cls = int(box.cls[0].item())
             label = f"{model.names[cls]} {conf:.2f}"
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(frame, label, (x1, y1 - 10),
@@ -21,11 +28,16 @@ def process_frame(frame):
 while True:
     ret, frame = video.read()
     if not ret:
-        break
+        print("Failed to grab frame")
+        continue
+
     frame = process_frame(frame)
-    cv2.imshow("YOLOv8 Detection", frame)
+    cv2.imshow("YOLOv8 Real-Time Detection", frame)
+
+    # quit with 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
+    
 
 video.release()
 cv2.destroyAllWindows()
