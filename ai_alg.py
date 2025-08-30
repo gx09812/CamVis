@@ -8,10 +8,15 @@ import matplotlib.pyplot as plt
 model = YOLO("yolov8n.pt")  
 video = cv2.VideoCapture(0)
 
-# Optional: Set resolution for faster processing
 video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
+# add the name in frames
+def add_name():
+    names ={
+        "monitor","keyboard","mouse","buildings"
+    }
+    return
 def process_frame(frame):
     results = model(frame, stream=True)  # stream=True = better for realtime
     for result in results:
