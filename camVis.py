@@ -1,113 +1,97 @@
-import cv2
-import os
+import cv2 as vision
 from ultralytics import YOLO
 import mediapipe as mp
-import face_recognition
 
 
 class SmartVision:
-    def __init__(self, known_faces_dir="known_faces", cam_index=0):
-        # YOLOv8
+    def __init__(self, input_source=0, allowed_classes=None, count=None):
+        # Load YOLOv8 model
         self.model = YOLO("yolov8n.pt")
 
         # MediaPipe Hands
         self.mp_hands = mp.solutions.hands
         self.mp_draw = mp.solutions.drawing_utils
-        self.hands = self.mp_hands.Hands(max_num_hands=1)
+        self.hands = self.mp_hands.Hands(
+            max_num_hands=1,
+            min_detection_confidence=0.6,
+            min_tracking_confidence=0.6
+        )
 
-        # Face Recognition
-        self.known_encodings = []
-        self.known_names = []
-        self.load_known_faces(known_faces_dir)
+        # Object filter & counting
+        self.allowed_classes = allowed_classes
+        self.count_limit = count
 
-        # Video
-        self.video = cv2.VideoCapture(cam_index)
-        self.video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Video input
+        self.video = vision.VideoCapture(input_source)
+        self.video.set(vision.CAP_PROP_FRAME_WIDTH, 640)
+        self.video.set(vision.CAP_PROP_FRAME_HEIGHT, 480)
 
-    def load_known_faces(self, folder):
-        if not os.path.exists(folder):
-            print(f"[WARN] '{folder}' folder not found. Skipping face loading.")
-            return
-
-        for filename in os.listdir(folder):
-            path = os.path.join(folder, filename)
-            image = face_recognition.load_image_file(path)
-            encodings = face_recognition.face_encodings(image)
-            if encodings:
-                self.known_encodings.append(encodings[0])
-                self.known_names.append(os.path.splitext(filename)[0])
-                print(f"[INFO] Loaded face: {filename}")
-            else:
-                print(f"[WARN] No face found in {filename}")
+    def read(self):
+        """Grab a frame from the camera"""
+        ret, frame = self.video.read()
+        return ret, frame
 
     def process_yolo(self, frame):
-        results = self.model(frame, stream=True)
+        detected_count = 0
+        results = self.model(frame, stream=True, conf=0.5, iou=0.4)
         for result in results:
             for box in result.boxes:
+                cls = int(box.cls[0].item())
+                class_name = self.model.names[cls]
+
+                if self.allowed_classes and class_name not in self.allowed_classes:
+                    continue
+
+                detected_count += 1
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = box.conf[0].item()
-                cls = int(box.cls[0].item())
-                label = f"{self.model.names[cls]} {conf:.2f}"
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, label, (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                label = f"{class_name} {conf:.2f}"
+
+                vision.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                vision.putText(frame, label, (x1, y1 - 10),
+                               vision.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        if self.count_limit and detected_count >= self.count_limit:
+            vision.putText(frame, f"Limit Reached ({self.count_limit})", (10, 70),
+                           vision.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         return frame
 
-    def detect_fingers(self, frame):
-        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    def detect_fingers(self, frame, finger_names=None):
+        img_rgb = vision.cvtColor(frame, vision.COLOR_BGR2RGB)
         results = self.hands.process(img_rgb)
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 self.mp_draw.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
-                # Index finger check
-                tip_id = 8
-                pip_id = 6
-                if hand_landmarks.landmark[tip_id].y < hand_landmarks.landmark[pip_id].y:
-                    cv2.putText(frame, "Index Finger Up", (10, 70),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            finger_tips = [4, 8, 12, 16, 20]
+            finger_pips = [3, 6, 10, 14, 18]
+            finger_status = {}
+
+            for tip, pip, name in zip(finger_tips, finger_pips, finger_names):
+                if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[pip].y:
+                    finger_status[name] = "Up"
+                else:
+                    finger_status[name] = "Down"
+
+            print("Finger States:", finger_status)
+
+            y = 30
+            for name, state in finger_status.items():
+                vision.putText(frame, f"{name}: {state}", (10, y),
+                               vision.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+                y += 25
         return frame
 
-    def recognize_faces(self, frame):
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_locations = face_recognition.face_locations(rgb_frame)
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+    # -------------------------
+    # OpenCV Window Wrappers
+    # -------------------------
+    def imgshow(self, frame, title="Smart Vision"):
+        vision.imshow(title, frame)
 
-        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-            matches = face_recognition.compare_faces(self.known_encodings, face_encoding)
-            name = "Unknown"
+    def wait(self, delay=1):
+        return vision.waitKey(delay) & 0xFF
 
-            if True in matches:
-                first_match_index = matches.index(True)
-                name = self.known_names[first_match_index]
-
-            cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-            cv2.putText(frame, name, (left, top - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        return frame
-
-    def run(self):
-        while True:
-            ret, frame = self.video.read()
-            if not ret:
-                print("Failed to grab frame")
-                break
-
-            frame = self.process_yolo(frame)
-            frame = self.detect_fingers(frame)
-            frame = self.recognize_faces(frame)
-
-            cv2.imshow("Smart Vision", frame)
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
+    def close(self):
         self.video.release()
-        cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    sv = SmartVision(known_faces_dir="known_faces", cam_index=0)
-    sv.run()
+        vision.destroyAllWindows()
