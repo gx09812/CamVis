@@ -4,7 +4,7 @@ import mediapipe as mp
 
 
 class SmartVision:
-    def __init__(self, input_source=0, allowed_classes=None, count=None):
+    def __init__(self, input_source=0, object=None, count=None):
         # Load YOLOv8 model
         self.model = YOLO("yolov8n.pt")
 
@@ -18,7 +18,7 @@ class SmartVision:
         )
 
         # Object filter & counting
-        self.allowed_classes = allowed_classes
+        self.object = object
         self.count_limit = count
 
         # Video input
@@ -27,7 +27,6 @@ class SmartVision:
         self.video.set(vision.CAP_PROP_FRAME_HEIGHT, 480)
 
     def read(self):
-        """Grab a frame from the camera"""
         ret, frame = self.video.read()
         return ret, frame
 
@@ -39,7 +38,7 @@ class SmartVision:
                 cls = int(box.cls[0].item())
                 class_name = self.model.names[cls]
 
-                if self.allowed_classes and class_name not in self.allowed_classes:
+                if self.object and class_name not in self.object:
                     continue
 
                 detected_count += 1
@@ -82,6 +81,21 @@ class SmartVision:
                                vision.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
                 y += 25
         return frame
+
+    def face_detection(self, frame):
+        face_cascade = vision.CascadeClassifier(vision.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        gray = vision.cvtColor(frame, vision.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+        for (x, y, w, h) in faces:
+            vision.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        return frame
+
+    def help(self):
+        # how many function used
+        print("Available methods: process_yolo 'SmartVision( input_source=0, object=['name'], count=10)', detect_fingers, face_detection")
+        print(f"Total functions available: {len(self.__class__.__dict__)}")
+
+        return
 
     # -------------------------
     # OpenCV Window Wrappers
