@@ -92,8 +92,11 @@ class SmartVision:
 
     def help(self):
         # how many function used
-        print("Available methods: process_yolo 'SmartVision( input_source=0, object=['name'], count=10)', detect_fingers, face_detection")
-        print(f"Total functions available: {len(self.__class__.__dict__)}")
+        print("\n" + "-"*100)
+        print(f"\nSmartVision Class - Methods and Usage")
+        print(f"\nAvailable methods: process_yolo 'SmartVision( input_source=0, object=['name'], count=10)', detect_fingers, face_detection")
+        print(f"\nTotal functions available: {len(self.__class__.__dict__)}")
+        print("\n" + "-"*100)
 
         return
 
