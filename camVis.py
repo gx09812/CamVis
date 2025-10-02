@@ -33,7 +33,7 @@ class SmartVision:
                     print(f"[SmartVision] YOLO model load failed: {e}")
                 self.model = None
 
-        # MediaPipe Hands
+        #  Hands
         self.mp_hands = mp.solutions.hands if use_hands else None
         self.hands = None
         self.mp_draw = None
@@ -45,7 +45,7 @@ class SmartVision:
             )
             self.mp_draw = mp.solutions.drawing_utils
 
-        # MediaPipe FaceMesh
+        #  FaceMesh
         self.mp_face_mesh = mp.solutions.face_mesh if use_face else None
         self.face_mesh = None
         if use_face and self.mp_face_mesh:
@@ -60,7 +60,7 @@ class SmartVision:
                     print(f"[SmartVision] FaceMesh init failed: {e}")
                 self.face_mesh = None
 
-        # Haar cascade face detection (optional fallback)
+        #  face detection 
         try:
             self.face_cascade = vision.CascadeClassifier(
                 vision.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -80,6 +80,7 @@ class SmartVision:
     # -----------------------------
     # Context manager support
     # -----------------------------
+
     def __enter__(self):
         return self
 
@@ -97,6 +98,7 @@ class SmartVision:
     # -----------------------------
     # Video utilities
     # -----------------------------
+
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
         ret, frame = self.video.read()
         if ret and self.mirror:
@@ -133,6 +135,7 @@ class SmartVision:
     # -----------------------------
     # Object detection
     # -----------------------------
+
     def detectObjects(self, frame: np.ndarray, draw: bool = True) -> Tuple[np.ndarray, List[Dict]]:
         if not self.model:
             return frame, []
@@ -174,6 +177,7 @@ class SmartVision:
     # -----------------------------
     # Finger detection
     # -----------------------------
+
     def detectFingers(self, frame: np.ndarray, finger_names: Optional[List[str]] = None, draw: bool = True) -> Tuple[np.ndarray, Dict[str, Dict[str, str]]]:
         if not self.hands:
             return frame, {}
@@ -224,6 +228,7 @@ class SmartVision:
     # -----------------------------
     # Face detection
     # -----------------------------
+
     def detectFaces(self, frame: np.ndarray, draw: bool = True) -> Tuple[np.ndarray, List[Dict]]:
         detected_faces: List[Dict] = []
         if self.face_cascade is None:
@@ -241,10 +246,11 @@ class SmartVision:
                 print(f"[SmartVision] detectFaces error: {e}")
 
         return frame, detected_faces
-
+    
     # -----------------------------
     # Eyes + Iris detection
     # -----------------------------
+
     def detectEYR(self, frame: np.ndarray, mode: str = "both", draw: bool = True) -> Tuple[np.ndarray, Dict]:
         if self.face_mesh is None:
             return frame, {"eyes": {"left": [], "right": []}, "iris": {"left": None, "right": None}}
@@ -299,7 +305,7 @@ class SmartVision:
                             vision.circle(frame, data["iris"]["right"], 3, (0, 0, 255), -1)
                             vision.putText(frame, f"R: {data['iris']['right']}", (30, 80),
                                            vision.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-
+                            
         except Exception as e:
             if self.debug:
                 print(f"{self.__class__.__name__} detectEYR error: {e}")
