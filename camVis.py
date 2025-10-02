@@ -7,8 +7,8 @@ from typing import Optional, List, Dict, Tuple, Any
 
 class SmartVision:
     def __init__(
-        self,
-        input_source: Any = 0,
+        self, 
+        input_source: Any = 0, 
         objects: Optional[List[str]] = None,
         count: Optional[int] = None,
         use_yolo: bool = True,
@@ -18,6 +18,7 @@ class SmartVision:
         debug: bool = True,
         mirror: bool = True,  # mirror webcam view
     ):
+        
         self.debug = debug
         self.objects = objects
         self.count_limit = count
@@ -93,8 +94,6 @@ class SmartVision:
         except Exception:
             pass
     
-    
-
     # -----------------------------
     # Video utilities
     # -----------------------------
@@ -250,8 +249,8 @@ class SmartVision:
     # -----------------------------
     # Eyes + Iris detection
     # -----------------------------
-
     def detectEYR(self, frame: np.ndarray, mode: str = "both", draw: bool = True) -> Tuple[np.ndarray, Dict]:
+        
         if self.face_mesh is None:
             return frame, {"eyes": {"left": [], "right": []}, "iris": {"left": None, "right": None}}
 
@@ -261,6 +260,12 @@ class SmartVision:
 
         data = {"eyes": {"left": [], "right": []}, "iris": {"left": None, "right": None}}
 
+        alpha = 0.6  
+        max_jump = 80.0  # px; if jump bigger than this, consider it an outlier and smooth more
+
+        prev_iris = getattr(self, "_prev_iris", {"left": None, "right": None})
+        prev_eyes_center = getattr(self, "_prev_eyes_center", {"left": None, "right": None})
+
         try:
             if results and getattr(results, "multi_face_landmarks", None):
                 for face_landmarks in results.multi_face_landmarks:
@@ -269,45 +274,92 @@ class SmartVision:
                     LEFT_IRIS = [474, 475, 476, 477]
                     RIGHT_IRIS = [469, 470, 471, 472]
 
-                    # Eyes
+                    def center_from_indices(indices):
+                        xs = np.array([face_landmarks.landmark[i].x * w for i in indices])
+                        ys = np.array([face_landmarks.landmark[i].y * h for i in indices])
+                        return float(np.median(xs)), float(np.median(ys))
+
+                   # EyesLeft
                     if mode in ("eyes", "eyesLeft", "both"):
-                        data["eyes"]["left"] = [(int(face_landmarks.landmark[i].x * w),
-                                                 int(face_landmarks.landmark[i].y * h))
-                                                for i in LEFT_EYE]
+                        data["eyes"]["left"] = [(int(face_landmarks.landmark[i].x * w), int(face_landmarks.landmark[i].y * h)) for i in LEFT_EYE]
                         if draw and mode in ("eyes", "eyesLeft", "both"):
                             for pt in data["eyes"]["left"]:
                                 vision.circle(frame, pt, 2, (0, 255, 0), -1)
-
+                                
+                    # EyesRight
                     if mode in ("eyes", "eyesRight", "both"):
-                        data["eyes"]["right"] = [(int(face_landmarks.landmark[i].x * w),
-                                                  int(face_landmarks.landmark[i].y * h))
-                                                 for i in RIGHT_EYE]
+                        data["eyes"]["right"] = [(int(face_landmarks.landmark[i].x * w), int(face_landmarks.landmark[i].y * h)) for i in RIGHT_EYE]
                         if draw and mode in ("eyes", "eyesRight", "both"):
                             for pt in data["eyes"]["right"]:
                                 vision.circle(frame, pt, 2, (0, 255, 0), -1)
-
-                    # Iris / Retina
-                    def get_center(indices):
-                        xs = [face_landmarks.landmark[i].x * w for i in indices]
-                        ys = [face_landmarks.landmark[i].y * h for i in indices]
-                        return int(np.mean(xs)), int(np.mean(ys))
-
+                    
+                    # Retina Left
                     if mode in ("retina", "retinaLeft", "both"):
-                        data["iris"]["left"] = get_center(LEFT_IRIS)
-                        if draw and mode in ("retina", "retinaLeft", "both"):
+                        iris_left = center_from_indices(LEFT_IRIS)
+                        p = prev_iris.get("left")
+                        if p is None:
+                            smooth_iris_left = iris_left
+                        else:
+                            dist = np.hypot(iris_left[0] - p[0], iris_left[1] - p[1])
+                            a = alpha if dist <= max_jump else max(0.1, alpha * 0.25)
+                            smooth_iris_left = (a * iris_left[0] + (1 - a) * p[0],
+                                                a * iris_left[1] + (1 - a) * p[1])
+                        prev_iris["left"] = smooth_iris_left
+                        data["iris"]["left"] = (int(round(smooth_iris_left[0])), int(round(smooth_iris_left[1])))
+
+                        if draw:
                             vision.circle(frame, data["iris"]["left"], 3, (0, 0, 255), -1)
                             vision.putText(frame, f"L: {data['iris']['left']}", (30, 50),
                                            vision.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-
+                            
+                    # Retina Right  
                     if mode in ("retina", "retinaRight", "both"):
-                        data["iris"]["right"] = get_center(RIGHT_IRIS)
-                        if draw and mode in ("retina", "retinaRight", "both"):
+                        iris_right = center_from_indices(RIGHT_IRIS)
+                        p = prev_iris.get("right")
+                        if p is None:
+                            smooth_iris_right = iris_right
+                        else:
+                            dist = np.hypot(iris_right[0] - p[0], iris_right[1] - p[1])
+                            a = alpha if dist <= max_jump else max(0.1, alpha * 0.25)
+                            smooth_iris_right = (a * iris_right[0] + (1 - a) * p[0],
+                                                 a * iris_right[1] + (1 - a) * p[1])
+                        prev_iris["right"] = smooth_iris_right
+                        data["iris"]["right"] = (int(round(smooth_iris_right[0])), int(round(smooth_iris_right[1])))
+
+                        if draw:
                             vision.circle(frame, data["iris"]["right"], 3, (0, 0, 255), -1)
                             vision.putText(frame, f"R: {data['iris']['right']}", (30, 80),
                                            vision.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-                            
+
         except Exception as e:
             if self.debug:
                 print(f"{self.__class__.__name__} detectEYR error: {e}")
 
+        self._prev_iris = prev_iris
+        self._prev_eyes_center = prev_eyes_center
+
         return frame, data
+
+    def help(self) -> None:
+        # Prints usage instructions for the SmartVision class.
+       
+        print("\n=== SmartVision Help ===\n")
+        print("1. Reading frames from camera or video:")
+        print("   ret, frame = sv.read()")
+        print("\n2. Object detection:")
+        print("   frame, objects = sv.detectObjects(frame, draw=True)")
+        print("\n3. Finger detection:")
+        print("   frame, fingers = sv.detectFingers(frame, draw=True)")
+        print("\n4. Face detection:")
+        print("   frame, faces = sv.detectFaces(frame, draw=True)")
+        print("\n5. Eye and iris detection:")
+        print("   frame, data = sv.detectEYR(frame, mode='both', draw=True)")
+        print("   Modes: 'eyes', 'eyesLeft', 'eyesRight', 'retina', 'retinaLeft', 'retinaRight', 'both'")
+        print("\n6. Show frame:")
+        print("   sv.imgshow(frame)")
+        print("\n7. Wait for key press:")
+        print("   key = sv.wait(delay=1)")
+        print("\n8. Close camera and windows:")
+        print("   sv.close()")
+        print("\nPress 'q' or 'Q' to quit the video stream.")
+       
