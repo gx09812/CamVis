@@ -69,3 +69,7 @@ Press 'q' to quit the video stream
 Contributions welcome — open issues or submit pull requests. Please include a clear description and minimal reproduction steps for any bugfix or feature.
 
 --- 
+
+## 📄 License
+
+This project is licensed under the **MIT License** – see the [LICENSE](./LICENSE) file for details.
